@@ -69,19 +69,14 @@ jobs:
           > ~/.buildozer/android.conf
         echo "镜像配置完成"
 
-    # 4. 【新增关键步骤】接受 Android SDK 许可协议
-    # 这一步是解决 "Aidl not found" 和 "license not accepted" 的关键
+    # 4. 接受许可协议
     - name: Accept Android SDK licenses
       run: |
         echo "正在接受 Android SDK 许可协议..."
-        # 创建 SDK 默认路径
         mkdir -p /home/runner/.buildozer/android/platform/android-sdk/licenses
-        
-        # 写入必要的许可密钥（这是 Google SDK 要求的）
         echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55" > /home/runner/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
         echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" >> /home/runner/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
         echo -e "\nd975f751698a77b662f1254ddbeed3901e435ca6" >> /home/runner/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        
         echo "许可协议已接受。"
 
     # 5. 开始打包
@@ -91,9 +86,22 @@ jobs:
         buildozer android clean || true
         
         echo "开始编译 APK（可能需要 10-20 分钟）..."
-        # 增加环境变量以解决可能的 Java 堆内存问题
         export JAVA_OPTS="-Xmx4096m"
+        
+        # 运行构建
         buildozer -v android debug 2>&1 | tee build_log.txt
+        
+        # 【关键修复】检查目录结构，手动创建软链接
+        echo "检查 SDK 目录结构..."
+        if [ -d "/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools" ] && [ ! -d "/home/runner/.buildozer/android/platform/android-sdk/tools" ]; then
+          echo "⚠️ 发现目录结构问题，正在手动修复 sdkmanager 路径..."
+          # 将 cmdline-tools 重命名为 tools，这是旧版 Buildozer 期望的路径
+          mv /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools /home/runner/.buildozer/android/platform/android-sdk/tools
+          echo "✅ 目录已重命名，重新尝试构建..."
+          
+          # 再次运行构建
+          buildozer -v android debug 2>&1 | tee build_log_final.txt
+        fi
 
     # 6. 检查并上传
     - name: Verify APK
