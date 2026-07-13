@@ -18,25 +18,25 @@ jobs:
       with:
         python-version: '3.9'
 
-    # 【关键步骤 1】手动安装 Buildozer 运行所需的 Linux 依赖
     - name: Install Linux dependencies
       run: |
         sudo apt update
         sudo apt install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libbz2-dev libltdl-dev libffi-dev libssl-dev
         
-    # 【关键步骤 2】安装 Python 依赖
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip
         pip install buildozer cython
 
-    # 【关键步骤 3】真正的打包步骤
     - name: Build APK with Buildozer
       run: |
-        # 设置国内镜像加速下载（防止后续下载 SDK 又超时）
-        export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-        # 开始打包
-        buildozer android debug
+        # 开启调试模式，打印所有详细日志
+        buildozer -v android debug 2>&1 || true
+        # 如果上面失败了，打印当前目录下的文件结构帮助排查
+        echo "--- Current Directory Listing ---"
+        ls -lah
+        echo "--- Checking for buildozer.spec ---"
+        ls -lah buildozer.spec || echo "buildozer.spec NOT FOUND!"
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
