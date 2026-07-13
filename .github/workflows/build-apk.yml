@@ -18,8 +18,8 @@ jobs:
       with:
         python-version: '3.9'
 
-    # 安装所有可能的 Linux 编译依赖（包含 Kivy 所需的图形库）
-    - name: Install ALL Linux dependencies
+    # 安装所有必需的 Linux 依赖
+    - name: Install Linux dependencies
       run: |
         sudo apt update
         sudo apt install -y \
@@ -34,32 +34,28 @@ jobs:
         pip install --upgrade pip
         pip install buildozer cython
 
+    # 【关键步骤】强制生成 buildozer.spec 并设置版本号
+    - name: Generate buildozer.spec if missing
+      run: |
+        if [ ! -f buildozer.spec ]; then
+          echo "buildozer.spec 不存在，正在生成默认配置..."
+          buildozer init
+          # 自动设置版本号，避免报错
+          sed -i 's/^# version = .*/version = 1.0.0/' buildozer.spec
+          echo "✅ 已生成 buildozer.spec 并设置版本号为 1.0.0"
+        else
+          echo "✅ buildozer.spec 已存在"
+        fi
+
+    # 执行打包命令
     - name: Build APK with verbose logging
       run: |
-        # 强制初始化（如果 buildozer.spec 不存在或损坏）
-        buildozer init || true
-        
-        # 设置调试环境变量，打印更多信息
         export BUILDOZER_DEBUG=1
-        
-        # 执行打包，并将所有输出保存到日志文件
         buildozer -v android debug 2>&1 | tee build_log.txt
-        
-        # 检查是否生成了 APK
-        echo "=== 检查 bin/ 目录 ==="
-        ls -lah bin/ || echo "bin/ 目录不存在"
-        
-        # 如果没找到 apk，则输出错误并退出（让 Actions 标记为失败）
-        if ! ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "❌ 错误：未找到任何 APK 文件！"
-          echo "最后 50 行构建日志："
-          tail -50 build_log.txt
-          exit 1
-        fi
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: gomoku-apk
         path: bin/*.apk
-        if-no-files-found: error   # 如果没有文件，让这一步也报错
+        if-no-files-found: error
