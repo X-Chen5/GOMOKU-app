@@ -1,0 +1,31 @@
+name: Build Gomoku APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Build APK with Buildozer
+      uses: kivy/buildozer-action@v2
+      with:
+        buildozer-version: stable
+        pypi_mirror: https://pypi.tuna.tsinghua.edu.cn/simple
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: gomoku-apk
+        path: bin/*.apk
