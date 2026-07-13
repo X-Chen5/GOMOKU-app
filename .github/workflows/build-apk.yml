@@ -34,91 +34,57 @@ jobs:
         pip install --upgrade pip
         pip install buildozer cython
 
-    # 2. 【终极修复】直接把配置内容写入文件，绕过 buildozer init 的权限坑
-    - name: Directly create buildozer.spec
+    # 2. 直接写入 buildozer.spec（使用 printf 逐行写入，避免 heredoc 缩进问题）
+    - name: Write buildozer.spec directly
       run: |
-        echo "正在直接生成 buildozer.spec 配置文件..."
-        
-        # 使用 cat 和 EOF 直接将标准内容写入文件
-        cat << 'EOF' > buildozer.spec
-[app]
-# (str) Application title (default: name of the folder)
-title = Gomoku
-
-# (str) Application identifier (default: default)
-package.name = gomoku
-
-# (str) Application version (default: 0.1)
-version = 1.0.0
-
-# (list) Application requirements
-# comma separated e.g. requirements = sqlite3,kivy
-requirements = python3,kivy
-
-# (str) Custom source folders for the app
-source.dir = .
-
-# (list) Source files to include (separate multiple entries with a space)
-source.include_exts = py,png,jpg,kv,atlas
-
-# (str) Application versioning (method 1)
-version.regex = __version__ = ['"](.*)['"]
-version.filename = %(source.dir)s/main.py
-
-# (list) Permissions
-android.permissions = INTERNET
-
-# Android specific
-p4a.branch = master
-android.api = 33
-android.minapi = 21
-android.sdk = 33
-android.ndk = 25b
-android.archs = arm64-v8a, armeabi-v7a
-android.logcat_filters = *:S python:D
-
-# (str) Bootstrap to use
-bootstrap = sdl2
-
-# (str) Custom Android entry point
-# custom application entry point can be specified here
-# (str) Custom android entry point (for sdl2 bootstrap)
-android.entrypoint = org.kivy.android.PythonActivity
-
-# (str) Custom android jvm arguments
-android.jvm_args = -Djava.library.path=/data/data/%(package.name)s/files/lib
-EOF
-
-        echo "✅ 配置文件已强制写入成功！"
-        echo "=== 文件内容验证 ==="
-        head -n 30 buildozer.spec
+        printf '%s\n' \
+          '[app]' \
+          'title = Gomoku' \
+          'package.name = gomoku' \
+          'version = 1.0.0' \
+          'requirements = python3,kivy' \
+          'source.dir = .' \
+          'source.include_exts = py,png,jpg,kv,atlas' \
+          'android.permissions = INTERNET' \
+          'android.api = 33' \
+          'android.minapi = 21' \
+          'android.sdk = 33' \
+          'android.ndk = 25b' \
+          'android.archs = arm64-v8a, armeabi-v7a' \
+          'bootstrap = sdl2' \
+          'android.entrypoint = org.kivy.android.PythonActivity' \
+          'android.jvm_args = -Djava.library.path=/data/data/%(package.name)s/files/lib' \
+          > buildozer.spec
+        echo "✅ buildozer.spec 已成功写入"
+        cat buildozer.spec
 
     # 3. 设置镜像源加速
     - name: Configure Buildozer mirrors
       run: |
         mkdir -p ~/.buildozer
-        echo "[general]" > ~/.buildozer/android.conf
-        echo "sdk_dir = /home/runner/.buildozer/android/platform/android-sdk" >> ~/.buildozer/android.conf
-        echo "ndk_dir = /home/runner/.buildozer/android/platform/android-ndk-r25b" >> ~/.buildozer/android.conf
-        echo "download_host = https://ghproxy.com/https://dl.google.com/android/repository/" >> ~/.buildozer/android.conf
+        printf '%s\n' \
+          '[general]' \
+          'sdk_dir = /home/runner/.buildozer/android/platform/android-sdk' \
+          'ndk_dir = /home/runner/.buildozer/android/platform/android-ndk-r25b' \
+          'download_host = https://ghproxy.com/https://dl.google.com/android/repository/' \
+          > ~/.buildozer/android.conf
+        echo "镜像配置完成"
 
     # 4. 开始打包
     - name: Build APK
       run: |
-        echo "开始清理旧缓存..."
+        echo "清理旧缓存..."
         buildozer android clean || true
-        
-        echo "开始编译 APK (这一步可能需要 10-20 分钟，请耐心等待)..."
-        # 打包并将日志输出到文件
+        echo "开始编译 APK（可能需要 10-20 分钟）..."
         buildozer -v android debug 2>&1 | tee build_log.txt
 
     # 5. 检查并上传
     - name: Verify APK
       run: |
-        echo "=== 检查 bin 目录是否有文件 ==="
-        ls -R bin/
+        echo "=== 检查 bin 目录 ==="
+        ls -R bin/ || echo "bin/ 目录不存在"
         if ! ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "❌ 依然没有找到 APK 文件，请查看上方日志。"
+          echo "❌ 未找到 APK 文件，构建失败。"
           exit 1
         fi
 
