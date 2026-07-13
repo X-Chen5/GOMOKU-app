@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false   # 即使某次尝试失败也不终止
 
     steps:
     - name: Checkout code
@@ -16,14 +18,38 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.9'
 
-    # 【关键修改】这里换成了目前最稳的第三方 action
-    - name: Build APK with Buildozer
-      uses: ArtemSBulgakov/buildozer-action@v1  # 注意这里是 @v1
+    - name: Cache Android SDK and NDK
+      id: cache-sdk
+      uses: actions/cache@v4
       with:
-        buildozer-version: stable
-        pypi_mirror: https://pypi.tuna.tsinghua.edu.cn/simple
+        path: |
+          ~/.buildozer/android/platform/android-sdk
+          ~/.buildozer/android/platform/android-ndk*
+        key: ${{ runner.os }}-android-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-android-
+
+    - name: Build APK with Buildozer (with retry)
+      uses: nick-fields/retry@v3   # 增加重试步骤
+      with:
+        timeout_minutes: 30
+        max_attempts: 3
+        retry_on: error
+        command: |
+          # 设置国内镜像环境变量
+          export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+          export ANDROID_SDK_MIRROR=https://mirrors.cloud.tencent.com/android/repository/
+          export ANDROID_NDK_MIRROR=https://dl.google.com/android/repository/
+          
+          # 运行 buildozer
+          buildozer android debug
+      env:
+        BUILD_REQUIREMENTS: python3,kivy
+        # 如果还有特定代理需求，可在此添加（但 Actions 上一般用不到）
+        # HTTP_PROXY: http://your-proxy:port
+        # HTTPS_PROXY: http://your-proxy:port
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
