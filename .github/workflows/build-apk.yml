@@ -18,8 +18,9 @@ jobs:
       with:
         python-version: '3.10'
 
+    # 【关键修改】这里换成了目前最稳的第三方 action
     - name: Build APK with Buildozer
-      uses: kivy/buildozer-action@v2
+      uses: ArtemSBulgakov/buildozer-action@v1  # 注意这里是 @v1
       with:
         buildozer-version: stable
         pypi_mirror: https://pypi.tuna.tsinghua.edu.cn/simple
