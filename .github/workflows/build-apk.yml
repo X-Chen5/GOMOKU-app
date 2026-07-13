@@ -18,7 +18,7 @@ jobs:
       with:
         python-version: '3.9'
 
-    # 1. 安装系统依赖（重点加入了 Android 编译所需的图形库）
+    # 1. 安装系统依赖
     - name: Install Linux dependencies
       run: |
         sudo apt update
@@ -34,45 +34,44 @@ jobs:
         pip install --upgrade pip
         pip install buildozer cython
 
-    # 2. 生成配置文件
+    # 2. 【强力修复】直接生成 buildozer.spec 文件
+    # 这一步会直接根据 main.py 在当前目录下创建一个全新的配置文件
     - name: Generate buildozer.spec
       run: |
-        if [ ! -f buildozer.spec ]; then
-          buildozer init
-          # 强制设置版本号
-          sed -i 's/^# version = .*/version = 1.0.0/' buildozer.spec
-          echo "已生成默认配置文件"
-        fi
+        echo "正在强制生成 buildozer.spec 文件..."
+        buildozer init
+        
+        # 确保版本号被正确设置（取消注释并赋值）
+        sed -i 's/^# version = .*/version = 1.0.0/' buildozer.spec
+        
+        echo "=== 当前目录下的文件列表 ==="
+        ls -la
+        echo "=== 生成的 spec 文件内容预览 ==="
+        head -n 20 buildozer.spec
 
-    # 3. 【关键】设置 Buildozer 镜像源（解决下载 SDK 超时问题）
+    # 3. 设置镜像源加速
     - name: Configure Buildozer mirrors
       run: |
         mkdir -p ~/.buildozer
         echo "[general]" > ~/.buildozer/android.conf
         echo "sdk_dir = /home/runner/.buildozer/android/platform/android-sdk" >> ~/.buildozer/android.conf
         echo "ndk_dir = /home/runner/.buildozer/android/platform/android-ndk-r25b" >> ~/.buildozer/android.conf
-        # 使用国内镜像加速下载（Ghproxy）
         echo "download_host = https://ghproxy.com/https://dl.google.com/android/repository/" >> ~/.buildozer/android.conf
-        echo "国内镜像配置完成"
 
-    # 4. 开始打包（增加超时时间）
+    # 4. 开始打包
     - name: Build APK
       run: |
-        # 清理旧的缓存（防止缓存损坏导致失败）
         buildozer android clean || true
-        
-        # 开始打包，输出详细日志
-        # 注意：这里可能需要较长时间（10-20分钟），请耐心等待
+        # 打包并将日志输出到文件
         buildozer -v android debug 2>&1 | tee build_log.txt
 
     # 5. 检查并上传
     - name: Verify APK
       run: |
-        echo "=== 检查生成的文件 ==="
+        echo "=== 检查 bin 目录 ==="
         ls -R bin/
         if ! ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "❌ 依然没有找到 APK 文件。"
-          echo "请看上面的日志输出。"
+          echo "❌ 未找到 APK 文件，构建失败。"
           exit 1
         fi
 
