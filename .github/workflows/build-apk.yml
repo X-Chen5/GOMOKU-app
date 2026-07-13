@@ -27,7 +27,7 @@ jobs:
           pkg-config zlib1g-dev libncurses5-dev libbz2-dev libltdl-dev \
           libffi-dev libssl-dev libgl1-mesa-dev libgles2-mesa-dev \
           libegl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev \
-          libxi-dev ccache cmake ninja-build
+          libxi-dev ccache cmake ninja-build wget
 
     - name: Install Python dependencies
       run: |
@@ -35,7 +35,7 @@ jobs:
         pip install buildozer cython
 
     # 2. 直接写入 buildozer.spec
-    - name: Write buildozer.spec directly
+    - name: Write buildozer.spec
       run: |
         printf '%s\n' \
           '[app]' \
@@ -55,9 +55,9 @@ jobs:
           'android.entrypoint = org.kivy.android.PythonActivity' \
           'android.jvm_args = -Djava.library.path=/data/data/%(package.name)s/files/lib' \
           > buildozer.spec
-        echo "✅ buildozer.spec 已成功写入"
+        echo "✅ buildozer.spec 已写入"
 
-    # 3. 设置镜像源加速
+    # 3. 配置 Buildozer 镜像（可选，但建议保留）
     - name: Configure Buildozer mirrors
       run: |
         mkdir -p ~/.buildozer
@@ -69,39 +69,41 @@ jobs:
           > ~/.buildozer/android.conf
         echo "镜像配置完成"
 
-    # 4. 接受许可协议
-    - name: Accept Android SDK licenses
+    # 4. 【关键步骤】手动安装 command-line tools 并建立 sdkmanager 路径
+    - name: Setup Android SDK properly
       run: |
-        echo "正在接受 Android SDK 许可协议..."
-        mkdir -p /home/runner/.buildozer/android/platform/android-sdk/licenses
-        echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55" > /home/runner/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" >> /home/runner/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo -e "\nd975f751698a77b662f1254ddbeed3901e435ca6" >> /home/runner/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "许可协议已接受。"
+        SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk
+        mkdir -p "$SDK_ROOT"
+
+        # 下载 command-line tools（使用 ghproxy 镜像加速）
+        wget -q "https://ghproxy.com/https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O /tmp/cmdline-tools.zip
+        unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools
+        # 解压后得到 /tmp/cmdline-tools/cmdline-tools/ 目录
+        # 将其移动到 SDK_ROOT/tools（Buildozer 期望的路径）
+        mkdir -p "$SDK_ROOT/tools"
+        cp -r /tmp/cmdline-tools/cmdline-tools/* "$SDK_ROOT/tools/"
+        rm -rf /tmp/cmdline-tools*
+
+        echo "=== 验证 sdkmanager ==="
+        ls -lh "$SDK_ROOT/tools/bin/sdkmanager"
+        "$SDK_ROOT/tools/bin/sdkmanager" --version
+
+        # 接受所有 licenses
+        yes | "$SDK_ROOT/tools/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+
+        # 预装 build-tools 和 platform（避免后续 Aidl 缺失）
+        "$SDK_ROOT/tools/bin/sdkmanager" "build-tools;34.0.0" "platforms;android-33"
+
+        echo "✅ Android SDK 已正确安装"
 
     # 5. 开始打包
     - name: Build APK
       run: |
         echo "清理旧缓存..."
         buildozer android clean || true
-        
         echo "开始编译 APK（可能需要 10-20 分钟）..."
         export JAVA_OPTS="-Xmx4096m"
-        
-        # 运行构建
         buildozer -v android debug 2>&1 | tee build_log.txt
-        
-        # 【关键修复】检查目录结构，手动创建软链接
-        echo "检查 SDK 目录结构..."
-        if [ -d "/home/runner/.buildozer/android/platform/android-sdk/cmdline-tools" ] && [ ! -d "/home/runner/.buildozer/android/platform/android-sdk/tools" ]; then
-          echo "⚠️ 发现目录结构问题，正在手动修复 sdkmanager 路径..."
-          # 将 cmdline-tools 重命名为 tools，这是旧版 Buildozer 期望的路径
-          mv /home/runner/.buildozer/android/platform/android-sdk/cmdline-tools /home/runner/.buildozer/android/platform/android-sdk/tools
-          echo "✅ 目录已重命名，重新尝试构建..."
-          
-          # 再次运行构建
-          buildozer -v android debug 2>&1 | tee build_log_final.txt
-        fi
 
     # 6. 检查并上传
     - name: Verify APK
