@@ -18,28 +18,48 @@ jobs:
       with:
         python-version: '3.9'
 
-    - name: Install Linux dependencies
+    # 安装所有可能的 Linux 编译依赖（包含 Kivy 所需的图形库）
+    - name: Install ALL Linux dependencies
       run: |
         sudo apt update
-        sudo apt install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libbz2-dev libltdl-dev libffi-dev libssl-dev
-        
+        sudo apt install -y \
+          git zip unzip openjdk-17-jdk python3-pip autoconf libtool \
+          pkg-config zlib1g-dev libncurses5-dev libbz2-dev libltdl-dev \
+          libffi-dev libssl-dev libgl1-mesa-dev libgles2-mesa-dev \
+          libegl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev \
+          libxi-dev ccache cmake make
+
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip
         pip install buildozer cython
 
-    - name: Build APK with Buildozer
+    - name: Build APK with verbose logging
       run: |
-        # 开启调试模式，打印所有详细日志
-        buildozer -v android debug 2>&1 || true
-        # 如果上面失败了，打印当前目录下的文件结构帮助排查
-        echo "--- Current Directory Listing ---"
-        ls -lah
-        echo "--- Checking for buildozer.spec ---"
-        ls -lah buildozer.spec || echo "buildozer.spec NOT FOUND!"
+        # 强制初始化（如果 buildozer.spec 不存在或损坏）
+        buildozer init || true
+        
+        # 设置调试环境变量，打印更多信息
+        export BUILDOZER_DEBUG=1
+        
+        # 执行打包，并将所有输出保存到日志文件
+        buildozer -v android debug 2>&1 | tee build_log.txt
+        
+        # 检查是否生成了 APK
+        echo "=== 检查 bin/ 目录 ==="
+        ls -lah bin/ || echo "bin/ 目录不存在"
+        
+        # 如果没找到 apk，则输出错误并退出（让 Actions 标记为失败）
+        if ! ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "❌ 错误：未找到任何 APK 文件！"
+          echo "最后 50 行构建日志："
+          tail -50 build_log.txt
+          exit 1
+        fi
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: gomoku-apk
         path: bin/*.apk
+        if-no-files-found: error   # 如果没有文件，让这一步也报错
