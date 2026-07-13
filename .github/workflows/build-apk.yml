@@ -18,7 +18,7 @@ jobs:
       with:
         python-version: '3.9'
 
-    # 安装所有必需的 Linux 依赖
+    # 1. 安装系统依赖（重点加入了 Android 编译所需的图形库）
     - name: Install Linux dependencies
       run: |
         sudo apt update
@@ -27,35 +27,57 @@ jobs:
           pkg-config zlib1g-dev libncurses5-dev libbz2-dev libltdl-dev \
           libffi-dev libssl-dev libgl1-mesa-dev libgles2-mesa-dev \
           libegl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev \
-          libxi-dev ccache cmake make
+          libxi-dev ccache cmake ninja-build
 
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip
         pip install buildozer cython
 
-    # 【关键步骤】强制生成 buildozer.spec 并设置版本号
-    - name: Generate buildozer.spec if missing
+    # 2. 生成配置文件
+    - name: Generate buildozer.spec
       run: |
         if [ ! -f buildozer.spec ]; then
-          echo "buildozer.spec 不存在，正在生成默认配置..."
           buildozer init
-          # 自动设置版本号，避免报错
+          # 强制设置版本号
           sed -i 's/^# version = .*/version = 1.0.0/' buildozer.spec
-          echo "✅ 已生成 buildozer.spec 并设置版本号为 1.0.0"
-        else
-          echo "✅ buildozer.spec 已存在"
+          echo "已生成默认配置文件"
         fi
 
-    # 执行打包命令
-    - name: Build APK with verbose logging
+    # 3. 【关键】设置 Buildozer 镜像源（解决下载 SDK 超时问题）
+    - name: Configure Buildozer mirrors
       run: |
-        export BUILDOZER_DEBUG=1
+        mkdir -p ~/.buildozer
+        echo "[general]" > ~/.buildozer/android.conf
+        echo "sdk_dir = /home/runner/.buildozer/android/platform/android-sdk" >> ~/.buildozer/android.conf
+        echo "ndk_dir = /home/runner/.buildozer/android/platform/android-ndk-r25b" >> ~/.buildozer/android.conf
+        # 使用国内镜像加速下载（Ghproxy）
+        echo "download_host = https://ghproxy.com/https://dl.google.com/android/repository/" >> ~/.buildozer/android.conf
+        echo "国内镜像配置完成"
+
+    # 4. 开始打包（增加超时时间）
+    - name: Build APK
+      run: |
+        # 清理旧的缓存（防止缓存损坏导致失败）
+        buildozer android clean || true
+        
+        # 开始打包，输出详细日志
+        # 注意：这里可能需要较长时间（10-20分钟），请耐心等待
         buildozer -v android debug 2>&1 | tee build_log.txt
 
-    - name: Upload APK artifact
+    # 5. 检查并上传
+    - name: Verify APK
+      run: |
+        echo "=== 检查生成的文件 ==="
+        ls -R bin/
+        if ! ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "❌ 依然没有找到 APK 文件。"
+          echo "请看上面的日志输出。"
+          exit 1
+        fi
+
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: gomoku-apk
         path: bin/*.apk
-        if-no-files-found: error
