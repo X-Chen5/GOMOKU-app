@@ -52,10 +52,12 @@ class GameWidget(Widget):
         side = min(self.width, self.height)
         self.offset_x = (self.width - side) / 2
         self.offset_y = (self.height - side) / 2
-        self.margin = side * 0.056
+        # 减小内边距，扩大棋盘有效面积
+        self.margin = side * 0.032
         inner_side = side - 2 * self.margin
         self.grid_size = inner_side / (BOARD_SIZE - 1)
-        self.piece_radius = self.grid_size * 0.438
+        # 增大棋子半径
+        self.piece_radius = self.grid_size * 0.456
         self.draw_board()
 
     def draw_board(self):
@@ -288,25 +290,34 @@ class GameWidget(Widget):
 
 class GomokuApp(App):
     def build(self):
+        # ----- 强制竖屏 -----
+        w, h = Window.size
+        if w > h:
+            Window.size = (h, w)
+        Window.minimum_width = 340
+        Window.minimum_height = 520
+        # -------------------
+
         Window.clearcolor = (0.921, 0.909, 0.879, 1)
         self.title = 'Gomoku'
         root = BoxLayout(orientation='vertical')
 
+        # 顶部栏高度降低，给棋盘更多空间
         top_bar = BoxLayout(orientation='horizontal',
                             size_hint=(1, None),
-                            height='48dp',
-                            padding=[10, 2],
-                            spacing=10)
+                            height='40dp',
+                            padding=[8, 2],
+                            spacing=8)
         status_label = Label(text='Turn: Black',
-                             font_size='18sp',
+                             font_size='17sp',
                              color=(0.1,0.1,0.1,1))
         move_label = Label(text='Moves: 0',
-                           font_size='16sp',
+                           font_size='15sp',
                            color=(0.3,0.3,0.3,1))
         top_bar.add_widget(status_label)
         top_bar.add_widget(move_label)
 
-        mode_btn = Button(text='vs AI', size_hint=(0.165,1),
+        mode_btn = Button(text='vs AI', size_hint=(0.175,1),
                           background_normal='',
                           background_color=(0.293,0.591,0.903,1),
                           color=(1,1,1,1))
@@ -314,18 +325,19 @@ class GomokuApp(App):
 
         board = GameWidget(size_hint=(1, 1))
 
+        # 底部栏高度降低
         bottom_bar = BoxLayout(orientation='horizontal',
                                size_hint=(1, None),
-                               height='50dp',
-                               padding=[10,5],
-                               spacing=10)
+                               height='42dp',
+                               padding=[8,4],
+                               spacing=8)
         buttons = [
             ('Restart', lambda x: board.restart_game()),
             ('Undo', lambda x: board.undo_move()),
             ('Quit', lambda x: board.quit_game())
         ]
         for text, callback in buttons:
-            btn = Button(text=text, font_size='16sp',
+            btn = Button(text=text, font_size='15sp',
                          background_normal='',
                          background_color=(0.969,0.723,0.020,1),
                          color=(0,0,0,1))
