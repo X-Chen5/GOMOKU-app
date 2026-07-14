@@ -1,165 +1,40 @@
-name: Build Gomoku APK
+name: Build Gomoku APK (Containerized)
+
 on:
+  workflow_dispatch:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 使用官方预装 SDK 的 Docker 容器
+    container:
+      image: kivy/buildozer:latest
+      options: --user root  # 以 root 身份运行，避免权限问题
 
     steps:
-      # 1. 检出代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 设置 Python 3.10
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      # 3. 安装系统依赖（适配 Kivy/Buildozer）
-      - name: Install system dependencies
+      # 容器内已经安装了 Python、Buildozer、Android SDK/NDK，无需再安装
+      # 只需要设置国内 PyPI 镜像加速 pip 安装
+      - name: Set up pip mirror
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            git zip unzip \
-            openjdk-11-jdk \
-            libncurses5 libstdc++6 \
-            libgl1 libasound2 \
-            libbz2-1.0 liblzma5
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
-      # 4. 安装 Python 依赖
-      - name: Install Python dependencies
-        run: |
-          pip install --upgrade pip
-          pip install buildozer cython
+      # 如果你的项目需要额外的 Python 依赖（例如 numpy），可以在这里安装
+      # - name: Install additional dependencies
+      #   run: |
+      #     pip install numpy
 
-      # 5. 创建 Buildozer 配置文件（若不存在）
-      - name: Create buildozer.spec (if missing)
-        run: |
-          if [ ! -f buildozer.spec ]; then
-            buildozer init
-          fi
-          # 强制覆盖关键配置（适配国内网络）
-          cat > buildozer.spec << 'EOF'
-          [app]
-          title = Gomoku
-          package.name = gomoku
-          package.domain = org.gomoku
-          source.dir = .
-          source.include_exts = py,png,jpg,kv,atlas
-          version = 0.1
-          requirements = python3,kivy==2.3.0
-          orientation = portrait
-          osx.python_version = 3
-          fullscreen = 0
-          [buildozer]
-          log_level = 2
-          warn_on_root = 1
-          [android]
-          android.api = 33
-          android.minapi = 21
-          android.sdk = 33
-          android.ndk = 25b
-          android.archs = arm64-v8a, armeabi-v7a
-          bootstrap = sdl2
-          android.entrypoint = org.kivy.android.PythonActivity
-          android.jvm_args = -Djava.library.path=/data/data/%(package.name)s/files/lib
-          EOF
-          echo "✅ buildozer.spec 已生成/更新"
-
-      # 6. 配置 Buildozer 镜像（国内源 + 代理）
-      - name: Configure Buildozer mirrors
-        run: |
-          mkdir -p ~/.buildozer
-          cat > ~/.buildozer/android.conf << 'EOF'
-          [general]
-          sdk_dir = /home/runner/.buildozer/android/platform/android-sdk
-          ndk_dir = /home/runner/.buildozer/android/platform/android-ndk-r25b
-          p4a.source_dir = /home/runner/.buildozer/android/platform/python-for-android
-          download_host = https://ghproxy.com/https://dl.google.com/android/repository/
-          EOF
-          echo "✅ Buildozer 镜像配置完成"
-
-      # 7. 【核心】手动安装 Android SDK（多镜像 + 断点续传 + 目录修正）
-      - name: Setup Android SDK (Robust)
-        run: |
-          # ========== 定义变量 ==========
-          SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk
-          TOOLS_ZIP=/tmp/cmdline-tools.zip
-          # 多镜像源（国内 + 代理，按优先级排序）
-          MIRRORS=(
-            "https://mirrors.huaweicloud.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-            "https://mirrors.cloud.tencent.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-            "https://mirrors.aliyun.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-            "https://ghproxy.com/https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-            "https://mirrors.163.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-          )
-          TARGET_HASH="d7a231c7f14e322f3a12212f9f3a7c97"  # 官方哈希（可选，若不需要可注释）
-
-          # ========== 步骤1：创建目录 ==========
-          mkdir -p "$SDK_ROOT/cmdline-tools"  # 新版结构：嵌套在 cmdline-tools 下
-
-          # ========== 步骤2：多镜像下载（断点续传 + 重试） ==========
-          echo "🌍 开始下载 command-line tools（多镜像+断点续传）..."
-          for mirror in "${MIRRORS[@]}"; do
-            echo "🔗 尝试镜像: $mirror"
-            wget -q -c --tries=5 --timeout=30 "$mirror" -O $TOOLS_ZIP
-            # 检查下载是否成功（文件非空 + 哈希匹配）
-            if [ -s "$TOOLS_ZIP" ]; then
-              # （可选）哈希校验：若不需要可注释
-              # ACTUAL_HASH=$(md5sum $TOOLS_ZIP | cut -d' ' -f1)
-              # if [ "$ACTUAL_HASH" = "$TARGET_HASH" ]; then
-                  echo "✅ 下载成功（镜像: $mirror）"
-                  break
-              # else
-              #   echo "⚠️ 哈希不匹配（镜像: $mirror），尝试下一个..."
-              #   rm -f $TOOLS_ZIP
-              # fi
-            else
-              echo "⚠️ 下载失败（镜像: $mirror），尝试下一个..."
-              rm -f $TOOLS_ZIP
-            fi
-          done
-
-          # 最终检查：文件是否存在且非空
-          if [ ! -s "$TOOLS_ZIP" ]; then
-            echo "❌❌❌ 所有镜像下载失败！请检查网络或镜像源。"
-            exit 1
-          fi
-
-          # ========== 步骤3：解压与目录结构修正 ==========
-          echo "📦 正在解压..."
-          unzip -q $TOOLS_ZIP -d /tmp/cmdline-unzipped
-          
-          echo "🛠️ 正在配置 SDK 目录结构..."
-          cp -r /tmp/cmdline-unzipped/cmdline-tools/* "$SDK_ROOT/cmdline-tools/"
-          rm -rf /tmp/cmdline-unzipped $TOOLS_ZIP
-
-          # 验证 sdkmanager 路径
-          echo "=== 验证 sdkmanager ==="
-          ls -lh "$SDK_ROOT/cmdline-tools/bin/sdkmanager"
-
-          # ========== 步骤4：接受协议并预装组件 ==========
-          echo "📝 正在接受协议并安装 build-tools..."
-          yes | "$SDK_ROOT/cmdline-tools/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
-          "$SDK_ROOT/cmdline-tools/bin/sdkmanager" "build-tools;34.0.0" "platforms;android-33"
-
-          echo "✅✅✅ Android SDK 已完美配置 ✅✅✅"
-
-      # 8. 编译 APK（增加内存限制，避免 OOM）
+      # 直接运行 Buildozer 打包（容器内已配置好 SDK 路径）
       - name: Build APK
         run: |
-          echo "清理旧缓存..."
-          buildozer android clean || true
-          echo "开始编译 APK（耗时约10-20分钟）..."
-          export JAVA_OPTS="-Xmx4096m"  # 分配4G内存给Java
+          echo "开始编译 APK（容器内环境已就绪）..."
+          export JAVA_OPTS="-Xmx4096m"
           buildozer -v android debug 2>&1 | tee build_log.txt
 
-      # 9. 检查并上传 APK
       - name: Verify and Upload APK
         run: |
           echo "=== 检查 bin 目录 ==="
