@@ -33,37 +33,10 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython
 
+      # 使用 echo -e 单行写入，彻底避免 heredoc 缩进问题
       - name: Write buildozer.spec
         run: |
-          cat > buildozer.spec << 'SPECEOF'
-[app]
-title = 业闲 - 五子棋
-package.name = gomoku
-package.domain = org.example
-version = 0.1
-source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,ttf
-source.exclude_exts = git,pyc,pyo
-source.exclude_dirs = tests,__pycache__,docs
-requirements = python3,kivy
-orientation = landscape
-fullscreen = true
-bootstrap = sdl2
-android.entrypoint = org.kivy.android.PythonActivity
-
-[buildozer]
-ignore_existing = True
-
-[app.android]
-android.api = 33
-android.minapi = 21
-android.targetapi = 33
-android.ndk = 25b
-android.archs = arm64-v8a,armeabi-v7a
-android.permissions = INTERNET
-
-environment = BUILDZER_NO_INTERACTION=1, PYTHONUNBUFFERED=1
-SPECEOF
+          echo -e "[app]\ntitle = 业闲 - 五子棋\npackage.name = gomoku\npackage.domain = org.example\nversion = 0.1\nsource.dir = .\nsource.include_exts = py,png,jpg,kv,atlas,ttf\nsource.exclude_exts = git,pyc,pyo\nsource.exclude_dirs = tests,__pycache__,docs\nrequirements = python3,kivy\norientation = landscape\nfullscreen = true\nbootstrap = sdl2\nandroid.entrypoint = org.kivy.android.PythonActivity\n\n[buildozer]\nignore_existing = True\n\n[app.android]\nandroid.api = 33\nandroid.minapi = 21\nandroid.targetapi = 33\nandroid.ndk = 25b\nandroid.archs = arm64-v8a,armeabi-v7a\nandroid.permissions = INTERNET\n\nenvironment = BUILDZER_NO_INTERACTION=1, PYTHONUNBUFFERED=1" > buildozer.spec
           echo "✅ buildozer.spec 已写入"
 
       - name: Build APK
@@ -72,6 +45,7 @@ SPECEOF
           buildozer android clean || true
           echo "开始编译 APK（这步非常耗时，请耐心等待 10-20 分钟）..."
           export JAVA_OPTS="-Xmx4096m"
+          # 通过管道将 "y" 输入到 buildozer，模拟用户确认
           echo "y" | buildozer -v android debug 2>&1 | tee build_log.txt
 
       - name: Verify APK
