@@ -72,29 +72,42 @@ jobs:
     # 4. 【关键步骤】手动安装 command-line tools 并建立 sdkmanager 路径
     - name: Setup Android SDK properly
       run: |
+        # 定义路径变量
         SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk
+        TOOLS_ZIP=/tmp/cmdline-tools.zip
+        
         mkdir -p "$SDK_ROOT"
 
-        # 下载 command-line tools（使用 ghproxy 镜像加速）
-        wget -q "https://ghproxy.com/https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O /tmp/cmdline-tools.zip
-        unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools
-        # 解压后得到 /tmp/cmdline-tools/cmdline-tools/ 目录
-        # 将其移动到 SDK_ROOT/tools（Buildozer 期望的路径）
+        # 1. 使用阿里云镜像下载 command-line tools (国内速度快且稳定)
+        # 原地址: https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+        # 镜像地址: https://mirrors.aliyun.com/android/repository/commandlinetools-linux-11076708_latest.zip
+        echo "正在下载 command-line tools..."
+        wget -q "https://mirrors.aliyun.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O $TOOLS_ZIP
+        
+        # 2. 校验文件是否下载完整 (检查文件大小)
+        if [ ! -s "$TOOLS_ZIP" ]; then
+          echo "❌ 下载失败，文件为空，请检查网络！"
+          exit 1
+        fi
+
+        # 3. 解压并安装
+        echo "正在解压..."
+        unzip -q $TOOLS_ZIP -d /tmp/cmdline-unzipped
+        
         mkdir -p "$SDK_ROOT/tools"
-        cp -r /tmp/cmdline-tools/cmdline-tools/* "$SDK_ROOT/tools/"
-        rm -rf /tmp/cmdline-tools*
+        # 注意：新版 cmdline-tools 解压后有一层 cmdline-tools 目录，需要把里面的内容挪出来
+        cp -r /tmp/cmdline-unzipped/cmdline-tools/* "$SDK_ROOT/tools/"
+        rm -rf /tmp/cmdline-unzipped $TOOLS_ZIP
 
         echo "=== 验证 sdkmanager ==="
         ls -lh "$SDK_ROOT/tools/bin/sdkmanager"
-        "$SDK_ROOT/tools/bin/sdkmanager" --version
-
-        # 接受所有 licenses
+        
+        # 4. 接受协议并预装组件
         yes | "$SDK_ROOT/tools/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
-
-        # 预装 build-tools 和 platform（避免后续 Aidl 缺失）
+        echo "正在安装 build-tools 和 platform..."
         "$SDK_ROOT/tools/bin/sdkmanager" "build-tools;34.0.0" "platforms;android-33"
 
-        echo "✅ Android SDK 已正确安装"
+        echo "✅ Android SDK 环境已准备就绪"
 
     # 5. 开始打包
     - name: Build APK
