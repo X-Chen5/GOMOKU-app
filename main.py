@@ -334,6 +334,11 @@ class GameWidget(Widget):
 
 class GomokuApp(App):
     def build(self):
+
+        from kivy.config import Config
+        Config.set('graphics', 'resizable', False)   # 禁止窗口大小改变
+        Config.write()                               # 写入配置
+        
         # 竖屏设置（保持不变）
         try:
             Window.orientation = 'portrait'
