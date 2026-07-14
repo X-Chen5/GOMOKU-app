@@ -53,10 +53,11 @@ class GameWidget(Widget):
         side = min(self.width, self.height)
         self.offset_x = (self.width - side) / 2
         self.offset_y = (self.height - side) / 2
-        self.margin = side * 0.038
+        # 进一步缩小内边距，让棋盘更大
+        self.margin = side * 0.030
         inner_side = side - 2 * self.margin
         self.grid_size = inner_side / (BOARD_SIZE - 1)
-        self.piece_radius = self.grid_size * 0.446
+        self.piece_radius = self.grid_size * 0.460   # 棋子略大
         self.draw_board()
 
     def draw_board(self):
@@ -66,12 +67,12 @@ class GameWidget(Widget):
 
         self.canvas.before.clear()
         with self.canvas.before:
-            Color(0.952, 0.882, 0.701, 1)
+            Color(0.957, 0.886, 0.706, 1)
             Rectangle(pos=(ox, oy), size=(side, side))
 
         self.canvas.after.clear()
         with self.canvas.after:
-            Color(0.179, 0.175, 0.171, 1)
+            Color(0.184, 0.180, 0.176, 1)
             for i in range(BOARD_SIZE):
                 x = ox + self.margin + i * self.grid_size
                 y = oy + self.margin + i * self.grid_size
@@ -95,6 +96,7 @@ class GameWidget(Widget):
                     if piece != 0:
                         self._draw_piece(r, c, piece, ox, oy)
 
+            # 高亮最后一步（红色圆环）
             if self.game.last_move:
                 r, c, _ = self.game.last_move
                 cx = ox + self.margin + c * self.grid_size
@@ -108,9 +110,9 @@ class GameWidget(Widget):
                 cx = ox + self.margin + self._hover_col * self.grid_size
                 cy = oy + self.margin + self._hover_row * self.grid_size
                 if self.game.current_player == 1:
-                    Color(0.571, 0.552, 0.511, 0.32)
+                    Color(0.576, 0.557, 0.518, 0.38)
                 else:
-                    Color(0.919, 0.891, 0.871, 0.32)
+                    Color(0.912, 0.896, 0.876, 0.38)
                 Ellipse(pos=(cx - self.piece_radius + 5,
                              cy - self.piece_radius + 5),
                         size=(2*(self.piece_radius-5), 2*(self.piece_radius-5)))
@@ -125,7 +127,7 @@ class GameWidget(Widget):
         Ellipse(pos=(cx - self.piece_radius, cy - self.piece_radius),
                 size=(2*self.piece_radius, 2*self.piece_radius))
         if player == 2:
-            Color(0.558, 0.547, 0.579, 1)
+            Color(0.565, 0.553, 0.586, 1)
             Line(circle=(cx, cy, self.piece_radius), width=1.2)
 
     def on_touch_down(self, touch):
@@ -184,7 +186,7 @@ class GameWidget(Widget):
             self.status_text = f'Turn: {turn}'
         self.move_count_text = f'Moves: {len(self.game.move_history)}'
 
-    # ---------- 修改点：颜色选择弹窗 ----------
+    # ========== 修改点：颜色选择弹窗 ==========
     def toggle_mode(self, button_instance):
         if self.vs_ai_mode:
             # 当前是人机模式 -> 切换到双人
@@ -199,7 +201,7 @@ class GameWidget(Widget):
         content = BoxLayout(orientation='vertical', spacing=15, padding=20)
         # 设置背景色
         with content.canvas.before:
-            Color(0.97, 0.944, 0.924, 1)
+            Color(0.97, 0.946, 0.926, 1)
             content.rect = Rectangle(size=content.size, pos=content.pos)
         content.bind(size=lambda instance, value: setattr(content.rect, 'size', value))
         content.bind(pos=lambda instance, value: setattr(content.rect, 'pos', value))
@@ -210,13 +212,13 @@ class GameWidget(Widget):
 
         btn_layout = BoxLayout(orientation='horizontal', spacing=20, size_hint=(1, 0.5))
 
-        black_btn = Button(text='Black', font_size='20sp',
+        black_btn = Button(text='⚫ Black', font_size='20sp',
                            background_normal='',
-                           background_color=(0.54, 0.265, 0.072, 1),  # 深棕
+                           background_color=(0.53, 0.255, 0.068, 1),  # 深棕
                            color=(1, 1, 1, 1))
-        white_btn = Button(text='White', font_size='20sp',
+        white_btn = Button(text='⚪ White', font_size='20sp',
                            background_normal='',
-                           background_color=(0.923, 0.847, 0.704, 1),  # 浅木色
+                           background_color=(0.928, 0.848, 0.708, 1),  # 浅木色
                            color=(0, 0, 0, 1))
 
         btn_layout.add_widget(black_btn)
@@ -225,8 +227,8 @@ class GameWidget(Widget):
 
         popup = Popup(title='',
                       content=content,
-                      size_hint=(0.76, 0.385),
-                      background_color=(0.968, 0.943, 0.923, 1),
+                      size_hint=(0.78, 0.39),
+                      background_color=(0.966, 0.941, 0.921, 1),
                       separator_height=0,
                       auto_dismiss=False)
 
@@ -242,6 +244,7 @@ class GameWidget(Widget):
         white_btn.bind(on_release=lambda x: on_choose(2, x))
 
         popup.open()
+    # ==========================================
 
     def set_two_player_mode(self):
         if self.vs_ai_mode:
@@ -311,21 +314,20 @@ class GameWidget(Widget):
         msg = 'Draw!' if self.game.winner == 0 else f'{["Black","White"][self.game.winner-1]} wins!'
 
         content = BoxLayout(orientation='vertical', spacing=20, padding=20)
-
-        label = PopupLabel(text=msg, font_size='30sp', color=(1, 0.839, 0, 1),
+        label = PopupLabel(text=msg, font_size='30sp', color=(1, 0.843, 0, 1),
                            halign='center', valign='middle')
         content.add_widget(label)
 
         close_btn = PopupButton(text='OK', size_hint=(1, 0.4), font_size='20sp',
                                 background_normal='',
-                                background_color=(0.285,0.582,0.894,1),
-                                color=(1,1,1,1))
+                                background_color=(0.3, 0.6, 0.9, 1),
+                                color=(1, 1, 1, 1))
         content.add_widget(close_btn)
 
         popup = Popup(title='Game Over',
                       content=content,
-                      size_hint=(0.635, 0.435),
-                      background_color=(0.929, 0.901, 0.849, 1),
+                      size_hint=(0.6, 0.4),
+                      background_color=(0.936, 0.907, 0.857, 1),
                       separator_height=0,
                       auto_dismiss=False)
         close_btn.bind(on_release=popup.dismiss)
@@ -334,71 +336,99 @@ class GameWidget(Widget):
 
 class GomokuApp(App):
     def build(self):
-
-        from kivy.config import Config
-        Config.set('graphics', 'resizable', False)   # 禁止窗口大小改变
-        Config.write()                               # 写入配置
-        
-        # 竖屏设置（保持不变）
-        try:
-            Window.orientation = 'portrait'
-        except:
-            pass
-
-        Window.clearcolor = (0.918, 0.905, 0.874, 1)
+        # 强制竖屏（Kivy 原生支持，Android 上会调 setRequestedOrientation）
+        Window.orientation = 'portrait'
+        Window.clearcolor = (0.921, 0.909, 0.879, 1)
         self.title = 'Gomoku'
+
         root = BoxLayout(orientation='vertical')
 
-        top_bar = BoxLayout(orientation='horizontal',
-                            size_hint=(1, None),
-                            height='40dp',
-                            padding=[8, 2],
-                            spacing=8)
-        status_label = Label(text='Turn: Black',
-                             font_size='17sp',
-                             color=(0.1,0.1,0.1,1))
-        move_label = Label(text='Moves: 0',
-                           font_size='15sp',
-                           color=(0.3,0.3,0.3,1))
+        # ---------- 顶部栏：状态文字 + 模式切换按钮 ----------
+        top_bar = BoxLayout(
+            orientation='horizontal',
+            size_hint=(1, None),
+            height='45dp',
+            padding=[12, 4],
+            spacing=12
+        )
+        status_label = Label(
+            text='Turn: Black',
+            font_size='18sp',
+            color=(0.1, 0.1, 0.1, 1),
+            size_hint_x=0.60
+        )
+        move_label = Label(
+            text='Moves: 0',
+            font_size='16sp',
+            color=(0.3, 0.3, 0.3, 1),
+            size_hint_x=0.22
+        )
+        mode_btn = Button(
+            text='vs AI',
+            size_hint_x=0.18,
+            background_normal='',
+            background_color=(0.293, 0.591, 0.903, 1),
+            color=(1, 1, 1, 1)
+        )
         top_bar.add_widget(status_label)
         top_bar.add_widget(move_label)
-
-        mode_btn = Button(text='vs AI', size_hint=(0.205,1),
-                          background_normal='',
-                          background_color=(0.283,0.578,0.889,1),
-                          color=(1,1,1,1))
         top_bar.add_widget(mode_btn)
 
+        # ---------- 棋盘（占据所有剩余空间） ----------
         board = GameWidget(size_hint=(1, 1))
 
-        bottom_bar = BoxLayout(orientation='horizontal',
-                               size_hint=(1, None),
-                               height='44dp',
-                               padding=[8,4],
-                               spacing=8)
-        buttons = [
-            ('Restart', lambda x: board.restart_game()),
-            ('Undo', lambda x: board.undo_move()),
-            ('Quit', lambda x: board.quit_game())
-        ]
-        for text, callback in buttons:
-            btn = Button(text=text, font_size='15sp',
-                         background_normal='',
-                         background_color=(0.959,0.715,0.014,1),
-                         color=(0,0,0,1))
-            btn.bind(on_release=callback)
-            bottom_bar.add_widget(btn)
+        # ---------- 底部栏：三个操作按钮 ----------
+        bottom_bar = BoxLayout(
+            orientation='horizontal',
+            size_hint=(1, None),
+            height='54dp',
+            padding=[12, 6],
+            spacing=12
+        )
+        btn_restart = Button(
+            text='Restart',
+            font_size='16sp',
+            background_normal='',
+            background_color=(0.969, 0.723, 0.02, 1),
+            color=(0, 0, 0, 1)
+        )
+        btn_undo = Button(
+            text='Undo',
+            font_size='16sp',
+            background_normal='',
+            background_color=(0.969, 0.723, 0.02, 1),
+            color=(0, 0, 0, 1)
+        )
+        btn_quit = Button(
+            text='Quit',
+            font_size='16sp',
+            background_normal='',
+            background_color=(0.969, 0.723, 0.02, 1),
+            color=(0, 0, 0, 1)
+        )
+        bottom_bar.add_widget(btn_restart)
+        bottom_bar.add_widget(btn_undo)
+        bottom_bar.add_widget(btn_quit)
 
+        # 绑定回调
+        btn_restart.bind(on_release=lambda x: board.restart_game())
+        btn_undo.bind(on_release=lambda x: board.undo_move())
+        btn_quit.bind(on_release=lambda x: board.quit_game())
+
+        # 绑定状态更新
         status_label.text = board.status_text
         move_label.text = board.move_count_text
         board.bind(status_text=status_label.setter('text'))
         board.bind(move_count_text=move_label.setter('text'))
 
+        # 模式切换按钮
         mode_btn.bind(on_release=lambda x: board.toggle_mode(x))
 
+        # 组装
         root.add_widget(top_bar)
         root.add_widget(board)
         root.add_widget(bottom_bar)
+
         return root
 
 
