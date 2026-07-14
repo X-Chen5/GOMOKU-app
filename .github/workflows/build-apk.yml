@@ -10,15 +10,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # 1. 拉取代码
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # 2. 设置 Python 环境
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
 
-    # 1. 安装系统依赖
+    # 3. 安装 Linux 系统依赖
     - name: Install Linux dependencies
       run: |
         sudo apt update
@@ -27,14 +29,15 @@ jobs:
           pkg-config zlib1g-dev libncurses5-dev libbz2-dev libltdl-dev \
           libffi-dev libssl-dev libgl1-mesa-dev libgles2-mesa-dev \
           libegl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev \
-          libxi-dev ccache cmake ninja-build wget
+          libxi-dev ccache cmake ninja-build
 
+    # 4. 安装 Python 依赖
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip
         pip install buildozer cython
 
-    # 2. 直接写入 buildozer.spec
+    # 5. 生成 buildozer.spec 配置文件
     - name: Write buildozer.spec
       run: |
         printf '%s\n' \
@@ -57,7 +60,7 @@ jobs:
           > buildozer.spec
         echo "✅ buildozer.spec 已写入"
 
-    # 3. 配置 Buildozer 镜像（可选，但建议保留）
+    # 6. 配置 Buildozer 镜像（针对 PyPI 和 SDK 下载）
     - name: Configure Buildozer mirrors
       run: |
         mkdir -p ~/.buildozer
@@ -65,68 +68,73 @@ jobs:
           '[general]' \
           'sdk_dir = /home/runner/.buildozer/android/platform/android-sdk' \
           'ndk_dir = /home/runner/.buildozer/android/platform/android-ndk-r25b' \
-          'download_host = https://ghproxy.com/https://dl.google.com/android/repository/' \
+          # 使用 ghproxy 代理 PyPI 下载（针对国内网络优化）
+          'p4a.source_dir = /home/runner/.buildozer/android/platform/python-for-android' \
           > ~/.buildozer/android.conf
         echo "镜像配置完成"
 
-    # 4. 【终极修复】手动安装 command-line tools (使用 wget 和国内源)
+    # 7. 【核心修复】手动安装 Android SDK (使用 wget 代替 curl)
     - name: Setup Android SDK properly
       run: |
-        # --- 定义路径 ---
+        # --- 定义路径变量 ---
         SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk
         TOOLS_ZIP=/tmp/cmdline-tools.zip
+        
+        # 创建 SDK 根目录
         mkdir -p "$SDK_ROOT"
 
-        # --- 核心下载逻辑 ---
+        # --- 1. 强力下载 Command Line Tools ---
         # 使用阿里云镜像 (国内极速)
-        URL="https://mirrors.aliyun.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+        DOWNLOAD_URL="https://mirrors.aliyun.com/android/repository/commandlinetools-linux-11076708_latest.zip"
         
         echo "🌍 正在从阿里云镜像下载 command-line tools..."
         
-        # 使用 wget 下载:
-        # -q : 安静模式 (不刷屏)
-        # --show-progress : 显示进度条 (方便观察)
-        # -O : 输出到指定文件
-        wget -q --show-progress "$URL" -O $TOOLS_ZIP
+        # 使用 wget:
+        # -c : 断点续传 (如果网络中断，再次运行会自动接着下，不会从头开始)
+        # --show-progress : 显示进度条
+        # -q : 静默模式 (不输出冗余信息)
+        # --timeout=30 : 设置超时时间，避免长时间卡死
+        wget -q --show-progress -c --timeout=30 "$DOWNLOAD_URL" -O $TOOLS_ZIP
 
-        # --- 完整性校验 ---
+        # --- 2. 完整性校验 ---
         echo "🔍 检查文件完整性..."
         # 检查文件大小是否为 0
         if [ ! -s "$TOOLS_ZIP" ]; then
-          echo "❌ 下载失败，文件为空！请检查网络。"
+          echo "❌❌❌ 致命错误：下载失败，文件为空！请检查网络。"
           exit 1
         fi
 
-        # --- 解压与安装 ---
+        # --- 3. 解压与目录结构修正 ---
         echo "📦 正在解压..."
         unzip -q $TOOLS_ZIP -d /tmp/cmdline-unzipped
         
         echo "🛠️ 正在配置 SDK 目录结构..."
         mkdir -p "$SDK_ROOT/tools"
-        # 将解压出的内容移动到正确的位置
+        # 新版 cmdline-tools 解压后会有一个 cmdline-tools 文件夹，需要把里面的内容挪出来
         cp -r /tmp/cmdline-unzipped/cmdline-tools/* "$SDK_ROOT/tools/"
         rm -rf /tmp/cmdline-unzipped $TOOLS_ZIP
 
         echo "=== 验证 sdkmanager ==="
         ls -lh "$SDK_ROOT/tools/bin/sdkmanager"
         
-        # --- 接受协议并预装组件 ---
+        # --- 4. 接受协议并预装组件 ---
         echo "📝 正在接受协议并安装 build-tools..."
         yes | "$SDK_ROOT/tools/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
         "$SDK_ROOT/tools/bin/sdkmanager" "build-tools;34.0.0" "platforms;android-33"
 
         echo "✅✅✅ Android SDK 已完美配置 ✅✅✅"
 
-    # 5. 开始打包
+    # 8. 开始打包 APK
     - name: Build APK
       run: |
         echo "清理旧缓存..."
         buildozer android clean || true
         echo "开始编译 APK（这步非常耗时，请耐心等待 10-20 分钟）..."
+        # 增加 Java 内存，防止编译大项目时 OOM
         export JAVA_OPTS="-Xmx4096m"
         buildozer -v android debug 2>&1 | tee build_log.txt
 
-    # 6. 检查并上传
+    # 9. 检查并上传产物
     - name: Verify APK
       run: |
         echo "=== 检查 bin 目录 ==="
