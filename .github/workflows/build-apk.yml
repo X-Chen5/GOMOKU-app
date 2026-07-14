@@ -10,17 +10,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. 拉取代码
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # 2. 设置 Python 环境
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
 
-    # 3. 安装 Linux 系统依赖
+    # 1. 安装系统依赖
     - name: Install Linux dependencies
       run: |
         sudo apt update
@@ -31,13 +29,12 @@ jobs:
           libegl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev \
           libxi-dev ccache cmake ninja-build
 
-    # 4. 安装 Python 依赖
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip
         pip install buildozer cython
 
-    # 5. 生成 buildozer.spec 配置文件
+    # 2. 写入 buildozer.spec (使用 heredoc 确保格式绝对正确)
     - name: Write buildozer.spec
       run: |
         printf '%s\n' \
@@ -60,51 +57,41 @@ jobs:
           > buildozer.spec
         echo "✅ buildozer.spec 已写入"
 
-    # 6. 配置 Buildozer 镜像（针对 PyPI 和 SDK 下载）
+    # 3. 配置 Buildozer 镜像 (关键步骤：使用 tee 避免空格报错)
     - name: Configure Buildozer mirrors
       run: |
-        mkdir -p ~/.buildozer
-        printf '%s\n' \
-          '[general]' \
-          'sdk_dir = /home/runner/.buildozer/android/platform/android-sdk' \
-          'ndk_dir = /home/runner/.buildozer/android/platform/android-ndk-r25b' \
-          # 使用 ghproxy 代理 PyPI 下载（针对国内网络优化）
-          'p4a.source_dir = /home/runner/.buildozer/android/platform/python-for-android' \
-          > ~/.buildozer/android.conf
-        echo "镜像配置完成"
+        # 使用 tee 配合 << 'EOF' (heredoc) 一次性安全写入所有内容
+        # 注意：开头的 'EOF' 加了单引号，表示不解析变量，原样输出
+        tee ~/.buildozer/android.conf << 'EOF'
+        [general]
+        sdk_dir = /home/runner/.buildozer/android/platform/android-sdk
+        ndk_dir = /home/runner/.buildozer/android/platform/android-ndk-r25b
+        p4a.source_dir = /home/runner/.buildozer/android/platform/python-for-android
+        download_host = https://ghproxy.com/https://dl.google.com/android/repository/
+        EOF
+        echo "✅ Buildozer 镜像配置完成"
 
-    # 7. 【核心修复】手动安装 Android SDK (使用 wget 代替 curl)
+    # 4. 【终极修复】手动安装 Android SDK
     - name: Setup Android SDK properly
       run: |
-        # --- 定义路径变量 ---
+        # --- 定义路径 ---
         SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk
         TOOLS_ZIP=/tmp/cmdline-tools.zip
         
-        # 创建 SDK 根目录
         mkdir -p "$SDK_ROOT"
 
-        # --- 1. 强力下载 Command Line Tools ---
-        # 使用阿里云镜像 (国内极速)
-        DOWNLOAD_URL="https://mirrors.aliyun.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-        
+        # --- 下载 (使用 wget 保证最大兼容性) ---
         echo "🌍 正在从阿里云镜像下载 command-line tools..."
-        
-        # 使用 wget:
-        # -c : 断点续传 (如果网络中断，再次运行会自动接着下，不会从头开始)
-        # --show-progress : 显示进度条
-        # -q : 静默模式 (不输出冗余信息)
-        # --timeout=30 : 设置超时时间，避免长时间卡死
-        wget -q --show-progress -c --timeout=30 "$DOWNLOAD_URL" -O $TOOLS_ZIP
+        # -c : 断点续传
+        wget -q -c "https://mirrors.aliyun.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O $TOOLS_ZIP
 
-        # --- 2. 完整性校验 ---
-        echo "🔍 检查文件完整性..."
-        # 检查文件大小是否为 0
+        # --- 完整性校验 ---
         if [ ! -s "$TOOLS_ZIP" ]; then
-          echo "❌❌❌ 致命错误：下载失败，文件为空！请检查网络。"
+          echo "❌ 下载失败，文件为空！"
           exit 1
         fi
 
-        # --- 3. 解压与目录结构修正 ---
+        # --- 解压与目录结构修正 ---
         echo "📦 正在解压..."
         unzip -q $TOOLS_ZIP -d /tmp/cmdline-unzipped
         
@@ -117,14 +104,14 @@ jobs:
         echo "=== 验证 sdkmanager ==="
         ls -lh "$SDK_ROOT/tools/bin/sdkmanager"
         
-        # --- 4. 接受协议并预装组件 ---
+        # --- 接受协议并预装组件 ---
         echo "📝 正在接受协议并安装 build-tools..."
         yes | "$SDK_ROOT/tools/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
         "$SDK_ROOT/tools/bin/sdkmanager" "build-tools;34.0.0" "platforms;android-33"
 
         echo "✅✅✅ Android SDK 已完美配置 ✅✅✅"
 
-    # 8. 开始打包 APK
+    # 5. 开始打包 APK
     - name: Build APK
       run: |
         echo "清理旧缓存..."
@@ -134,7 +121,7 @@ jobs:
         export JAVA_OPTS="-Xmx4096m"
         buildozer -v android debug 2>&1 | tee build_log.txt
 
-    # 9. 检查并上传产物
+    # 6. 检查并上传产物
     - name: Verify APK
       run: |
         echo "=== 检查 bin 目录 ==="
