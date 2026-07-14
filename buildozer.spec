@@ -12,6 +12,9 @@ source.exclude_dirs = tests,__pycache__,docs
 requirements = python3,kivy
 
 orientation = portrait
+android.gradle = android.defaultConfig {
+    manifestPlaceholders = [screenOrientation: "portrait"]
+}
 fullscreen = true
 
 bootstrap = sdl2
