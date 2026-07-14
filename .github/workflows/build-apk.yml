@@ -1,4 +1,4 @@
-name: Build Gomoku APK (Containerized)
+name: Build Gomoku APK
 
 on:
   workflow_dispatch:
@@ -8,34 +8,73 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # 使用官方预装 SDK 的 Docker 容器
-    container:
-      image: kivy/buildozer:latest
-      options: --user root  # 以 root 身份运行，避免权限问题
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 容器内已经安装了 Python、Buildozer、Android SDK/NDK，无需再安装
-      # 只需要设置国内 PyPI 镜像加速 pip 安装
-      - name: Set up pip mirror
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install Linux dependencies
         run: |
-          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          sudo apt update
+          sudo apt install -y \
+            git zip unzip openjdk-17-jdk python3-pip autoconf libtool \
+            pkg-config zlib1g-dev libncurses5-dev libbz2-dev libltdl-dev \
+            libffi-dev libssl-dev libgl1-mesa-dev libgles2-mesa-dev \
+            libegl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev \
+            libxi-dev ccache cmake ninja-build
 
-      # 如果你的项目需要额外的 Python 依赖（例如 numpy），可以在这里安装
-      # - name: Install additional dependencies
-      #   run: |
-      #     pip install numpy
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython
 
-      # 直接运行 Buildozer 打包（容器内已配置好 SDK 路径）
+      - name: Write buildozer.spec
+        run: |
+          cat > buildozer.spec << 'SPECEOF'
+[app]
+title = 业闲 - 五子棋
+package.name = gomoku
+package.domain = org.example
+version = 0.1
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas,ttf
+source.exclude_exts = git,pyc,pyo
+source.exclude_dirs = tests,__pycache__,docs
+requirements = python3,kivy
+orientation = landscape
+fullscreen = true
+bootstrap = sdl2
+android.entrypoint = org.kivy.android.PythonActivity
+
+[buildozer]
+ignore_existing = True
+
+[app.android]
+android.api = 33
+android.minapi = 21
+android.targetapi = 33
+android.ndk = 25b
+android.archs = arm64-v8a,armeabi-v7a
+android.permissions = INTERNET
+
+environment = BUILDZER_NO_INTERACTION=1, PYTHONUNBUFFERED=1
+SPECEOF
+          echo "✅ buildozer.spec 已写入"
+
       - name: Build APK
         run: |
-          echo "开始编译 APK（容器内环境已就绪）..."
+          echo "清理旧缓存..."
+          buildozer android clean || true
+          echo "开始编译 APK（这步非常耗时，请耐心等待 10-20 分钟）..."
           export JAVA_OPTS="-Xmx4096m"
-          buildozer -v android debug 2>&1 | tee build_log.txt
+          echo "y" | buildozer -v android debug 2>&1 | tee build_log.txt
 
-      - name: Verify and Upload APK
+      - name: Verify APK
         run: |
           echo "=== 检查 bin 目录 ==="
           ls -R bin/ || echo "bin/ 目录不存在"
